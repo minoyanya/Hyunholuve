@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Взаимодействие тел · 3 уровня</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      background: linear-gradient(135deg, #1a1e2b, #2a2f3f);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+      padding: 20px;
+      margin: 0;
+    }
+    .game-container {
+      background: #0f1219;
+      border-radius: 2.5rem;
+      padding: 1.8rem;
+      box-shadow: 0 30px 50px rgba(0,0,0,0.7), inset 0 0 0 1px rgba(255,255,255,0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    canvas {
+      display: block;
+      border-radius: 2rem;
+      background: radial-gradient(circle at 20% 20%, #2b3142, #141822);
+      box-shadow: inset 0 0 40px rgba(0,0,0,0.8), 0 20px 30px rgba(0,0,0,0.6);
+      width: 100%;
+      height: auto;
+      max-width: 600px;
+      aspect-ratio: 1 / 1;
+    }
+    .info-panel {
+      width: 100%;
+      margin-top: 1.2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: #e0e5f0;
+      font-weight: 500;
+      background: rgba(20, 25, 35, 0.7);
+      backdrop-filter: blur(10px);
+      padding: 0.9rem 1.8rem;
+      border-radius: 4rem;
+      box-shadow: 0 10px 20px rgba(0,0,0,0.5);
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    .level-badge {
+      background: #4f46e5;
+      padding: 0.5rem 1.5rem;
+      border-radius: 3rem;
+      font-weight: bold;
+      font-size: 1.2rem;
+      letter-spacing: 0.5px;
+      color: white;
+      box-shadow: 0 0 15px #4f46e5aa;
+    }
+    .target-counter {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #1e2330;
+      padding: 0.4rem 1.5rem;
+      border-radius: 3rem;
+    }
+    .green-dot {
+      width: 18px;
+      height: 18px;
+      background: #4ade80;
+      border-radius: 50%;
+      box-shadow: 0 0 12px #4ade80;
+    }
+    button {
+      background: #f97316;
+      border: none;
+      color: white;
+      font-weight: bold;
+      padding: 0.7rem 1.8rem;
+      border-radius: 3rem;
+      font-size: 1rem;
+      cursor: pointer;
+      background: linear-gradient(135deg, #f97316, #ea580c);
+      box-shadow: 0 8px 18px rgba(249, 115, 22, 0.5);
+      transition: all 0.2s ease;
+      border: 1px solid rgba(255,255,255,0.15);
+      letter-spacing: 0.4px;
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    button:hover {
+      transform: scale(1.04);
+      box-shadow: 0 12px 22px rgba(249, 115, 22, 0.7);
+      background: linear-gradient(135deg, #fb923c, #f97316);
+    }
+    .controls {
+      display: flex;
+      gap: 0.7rem;
+      align-items: center;
+      color: #a0a9c0;
+      font-size: 0.9rem;
+    }
+    kbd {
+      background: #2d3343;
+      padding: 0.2rem 0.7rem;
+      border-radius: 0.5rem;
+      font-weight: bold;
+      color: #facc15;
+      margin: 0 0.2rem;
+    }
+    @media (max-width: 500px) {
+      .info-panel {
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+<div style="display: flex; flex-direction: column; align-items: center;">
+  <div class="game-container">
+    <canvas id="gameCanvas" width="500" height="500" aria-label="Игровое поле взаимодействия тел"></canvas>
+    <div class="info-panel">
+      <div class="level-badge" id="levelDisplay">Уровень 1</div>
+      <div class="target-counter">
+        <span class="green-dot"></span>
+        <span id="collectedDisplay">0 / 3</span>
+      </div>
+      <div class="controls">
+        <span><kbd>←↑↓→</kbd> или <kbd>WASD</kbd></span>
+      </div>
+      <button id="resetButton">↺ Заново</button>
+    </div>
+  </div>
+  <div style="color:#a0a9c0; margin-top: 0.8rem; font-size: 0.9rem;">
+    Собирай зелёные сферы · Избегай красных
+  </div>
+</div>
+
+<script>
+  (function() {
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // UI элементы
+    const levelDisplay = document.getElementById('levelDisplay');
+    const collectedDisplay = document.getElementById('collectedDisplay');
+
+    // Размеры поля
+    const W = canvas.width;
+    const H = canvas.height;
+
+    // ---------- Игровые параметры ----------
+    const PLAYER_RADIUS = 18;
+    const ENEMY_RADIUS = 16;
+    const TARGET_RADIUS = 14;
+
+    // Игрок
+    let player = {
+      x: W / 2,
+      y: H / 2,
+      radius: PLAYER_RADIUS
+    };
+
+    // Динамические объекты
+    let enemies = [];        // Красные (опасные)
+    let targets = [];       // Зелёные (цели)
+
+    // Состояние движения (клавиши)
+    const keys = {
+      ArrowLeft: false,
+      ArrowRight: false,
+      ArrowUp: false,
+      ArrowDown: false,
+      KeyA: false,
+      KeyD: false,
+      KeyW: false,
+      KeyS: false
+    };
+
+    // Текущий уровень (1,2,3)
+    let currentLevel = 1;
+    const MAX_LEVEL = 3;
+
+    // Количество целей, необходимое для завершения уровня
+    const TARGETS_PER_LEVEL = 3;
+    let collectedCount = 0;
+
+    // Игра активна (не окончена поражением)
+    let gameActive = true;
+    // Победа на всех уровнях
+    let gameCompleted = false;
+
+    // Скорость игрока
+    const PLAYER_SPEED = 4.2;
+
+    // ---------- Всплывающие окна (кастомные модальные сообщения) ----------
+    function showModal(title, message, isSuccess = false) {
+      // Удаляем предыдущее окно, если есть
+      const existingModal = document.getElementById('customModal');
+      if (existingModal) existingModal.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'customModal';
+      modal.style.position = 'fixed';
+      modal.style.top = '0';
+      modal.style.left = '0';
+      modal.style.width = '100vw';
+      modal.style.height = '100vh';
+      modal.style.backgroundColor = 'rgba(0,0,0,0.7)';
+      modal.style.backdropFilter = 'blur(6px)';
+      modal.style.display = 'flex';
+      modal.style.justifyContent = 'center';
+      modal.style.alignItems = 'center';
+      modal.style.zIndex = '1000';
+      modal.style.fontFamily = "'Segoe UI', Roboto, sans-serif";
+
+      const dialog = document.createElement('div');
+      dialog.style.background = isSuccess ? 'linear-gradient(145deg, #1e3a2f, #0f2b1f)' : 'linear-gradient(145deg, #3a1e1e, #2b0f0f)';
+      dialog.style.border = isSuccess ? '2px solid #4ade80' : '2px solid #f87171';
+      dialog.style.borderRadius = '2.5rem';
+      dialog.style.padding = '2rem 2.5rem';
+      dialog.style.maxWidth = '400px';
+      dialog.style.textAlign = 'center';
+      dialog.style.boxShadow = '0 30px 50px rgba(0,0,0,0.8)';
+      dialog.style.color = '#f0f0f0';
+
+      dialog.innerHTML = `
+        <h2 style="margin-top:0; color: ${isSuccess ? '#4ade80' : '#f87171'}; font-size: 2rem;">${title}</h2>
+        <p style="font-size: 1.2rem; margin: 1.2rem 0;">${message}</p>
+        <button id="modalCloseBtn" style="background:${isSuccess ? '#16a34a' : '#b91c1c'}; border:none; color:white; padding:0.8rem 2rem; border-radius:3rem; font-weight:bold; font-size:1rem; cursor:pointer; box-shadow:0 8px 18px rgba(0,0,0,0.5);">OK</button>
+      `;
+
+      modal.appendChild(dialog);
+      document.body.appendChild(modal);
+
+      const closeBtn = document.getElementById('modalCloseBtn');
+      const closeModal = () => {
+        if (document.getElementById('customModal')) {
+          document.body.removeChild(modal);
+        }
+      };
+      closeBtn.addEventListener('click', closeModal);
+      // Также закрытие по клику на фон (но не на диалог)
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+      });
+    }
+
+    // ---------- Сброс уровня (сохраняя номер уровня) ----------
+    function resetLevel(level) {
+      // Очищаем массивы
+      enemies = [];
+      targets = [];
+
+      // Размещаем врагов и цели в зависимости от уровня
+      // Уровень 1: 2 врага, 3 цели
+      // Уровень 2: 3 врага, 3 цели
+      // Уровень 3: 4 врага, 3 цели
+      let enemyCount = 0;
+      if (level === 1) enemyCount = 2;
+      else if (level === 2) enemyCount = 3;
+      else if (level === 3) enemyCount = 4;
+
+      // Генерация врагов (избегаем наложения на игрока и друг на друга)
+      for (let i = 0; i < enemyCount; i++) {
+        let newEnemy;
+        let attempts = 0;
+        const maxAttempts = 500;
+        do {
+          newEnemy = {
+            x: Math.random() * (W - 2 * ENEMY_RADIUS) + ENEMY_RADIUS,
+            y: Math.random() * (H - 2 * ENEMY_RADIUS) + ENEMY_RADIUS,
+            radius: ENEMY_RADIUS,
+            vx: (Math.random() - 0.5) * 2.6,
+            vy: (Math.random() - 0.5) * 2.6
+          };
+          attempts++;
+          if (attempts > maxAttempts) break;
+        } while (
+          isCollidingWithPlayer(newEnemy, player) ||
+          isOverlappingAny(newEnemy, enemies, ENEMY_RADIUS + 8)
+          );
+        // Гарантируем минимальную скорость
+        if (Math.abs(newEnemy.vx) < 0.7) newEnemy.vx = newEnemy.vx > 0 ? 0.9 : -0.9;
+        if (Math.abs(newEnemy.vy) < 0.7) newEnemy.vy = newEnemy.vy > 0 ? 0.9 : -0.9;
+        enemies.push(newEnemy);
+      }
+
+      // Генерация целей (зелёные)
+      for (let i = 0; i < TARGETS_PER_LEVEL; i++) {
+        let newTarget;
+        let attempts = 0;
+        const maxAttempts = 500;
+        do {
+          newTarget = {
+            x: Math.random() * (W - 2 * TARGET_RADIUS) + TARGET_RADIUS,
+            y: Math.random() * (H - 2 * TARGET_RADIUS) + TARGET_RADIUS,
+            radius: TARGET_RADIUS,
+            collected: false
+          };
+          attempts++;
+          if (attempts > maxAttempts) break;
+        } while (
+          isCollidingWithPlayer(newTarget, player) ||
+          isOverlappingAny(newTarget, enemies, TARGET_RADIUS + 12) ||
+          isOverlappingAny(newTarget, targets, TARGET_RADIUS + 10)
+          );
+        targets.push(newTarget);
+      }
+
+      // Сбрасываем счётчик собранных на уровне
+      collectedCount = 0;
+      updateUI();
+
+      // Игрок в центр
+      player.x = W / 2;
+      player.y = H / 2;
+
+      // Игра активна (если не была завершена победой)
+      if (!gameCompleted) {
+        gameActive = true;
+      }
+    }
+
+    // Вспомогательные функции проверки коллизий
+    function isCollidingWithPlayer(obj, playerObj) {
+      const dx = obj.x - playerObj.x;
+      const dy = obj.y - playerObj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      return dist < (obj.radius + playerObj.radius + 8);
+    }
+
+    function isOverlappingAny(obj, list, minDist) {
+      for (let item of list) {
+        const dx = obj.x - item.x;
+        const dy = obj.y - item.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < minDist) return true;
+      }
+      return false;
+    }
+
+    // Проверка столкновения игрока с врагами
+    function checkPlayerEnemyCollision() {
+      for (let enemy of enemies) {
+        const dx = player.x - enemy.x;
+        const dy = player.y - enemy.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < player.radius + enemy.radius) {
+          return true; // Столкновение
+        }
+      }
+      return false;
+    }
+
+    // Сбор целей
+    function collectTargets() {
+      for (let i = targets.length - 1; i >= 0; i--) {
+        const target = targets[i];
+        const dx = player.x - target.x;
+        const dy = player.y - target.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < player.radius + target.radius) {
+          // Собираем цель
+          targets.splice(i, 1);
+          collectedCount++;
+          updateUI();
+
+          // Проверка завершения уровня
+          if (collectedCount >= TARGETS_PER_LEVEL) {
+            handleLevelComplete();
+          }
+        }
+      }
+    }
+
+    // Обработка завершения уровня
+    function handleLevelComplete() {
+      if (currentLevel === MAX_LEVEL) {
+        // Победа в игре!
+        gameActive = false;
+        gameCompleted = true;
+        showModal('🏆 Поздравляем!', 'Вы прошли все 3 уровня! Великолепное взаимодействие тел.', true);
+      } else {
+        // Переход на следующий уровень
+        gameActive = false; // Пауза перед переходом
+        showModal('✅ Уровень пройден!', `Вы собрали все цели. Переход на уровень ${currentLevel + 1}.`, true);
+        // После закрытия модального окна переходим на следующий уровень
+        setTimeout(() => {
+          // Убедимся, что модальное окно закрыто (может быть закрыто пользователем)
+          const modal = document.getElementById('customModal');
+          if (modal) modal.remove();
+          currentLevel++;
+          resetLevel(currentLevel);
+          gameActive = true;
+          updateUI();
+        }, 200); // Небольшая задержка, чтобы окно появилось
+      }
+    }
+
+    // Поражение
+    function handleGameOver() {
+      if (!gameActive || gameCompleted) return; // Уже не активно
+      gameActive = false;
+      showModal('💥 Столкновение!', 'Красная сфера поймала вас. Попробуйте снова.', false);
+      // После закрытия окна перезапускаем текущий уровень
+      setTimeout(() => {
+        const modal = document.getElementById('customModal');
+        if (modal) modal.remove();
+        // Перезапускаем текущий уровень (сброс)
+        resetLevel(currentLevel);
+        gameActive = true;
+        updateUI();
+      }, 200);
+    }
+
+    // Обновление интерфейса
+    function updateUI() {
+      levelDisplay.textContent = `Уровень ${currentLevel}`;
+      collectedDisplay.textContent = `${collectedCount} / ${TARGETS_PER_LEVEL}`;
+    }
+
+    // Движение врагов с отскоком от стен
+    function moveEnemies() {
+      for (let enemy of enemies) {
+        enemy.x += enemy.vx;
+        enemy.y += enemy.vy;
+
+        // Отскок от границ
+        if (enemy.x - enemy.radius < 0) {
+          enemy.x = enemy.radius;
+          enemy.vx *= -0.95;
+        } else if (enemy.x + enemy.radius > W) {
+          enemy.x = W - enemy.radius;
+          enemy.vx *= -0.95;
+        }
+
+        if (enemy.y - enemy.radius < 0) {
+          enemy.y = enemy.radius;
+          enemy.vy *= -0.95;
+        } else if (enemy.y + enemy.radius > H) {
+          enemy.y = H - enemy.radius;
+          enemy.vy *= -0.95;
+        }
+      }
+    }
+
+    // Движение игрока на основе нажатых клавиш
+    function movePlayer() {
+      let dx = 0, dy = 0;
+      if (keys.ArrowLeft || keys.KeyA) dx -= 1;
+      if (keys.ArrowRight || keys.KeyD) dx += 1;
+      if (keys.ArrowUp || keys.KeyW) dy -= 1;
+      if (keys.ArrowDown || keys.KeyS) dy += 1;
+
+      if (dx !== 0 || dy !== 0) {
+        const len = Math.sqrt(dx * dx + dy * dy);
+        dx = (dx / len) * PLAYER_SPEED;
+        dy = (dy / len) * PLAYER_SPEED;
+      }
+
+      player.x += dx;
+      player.y += dy;
+
+      // Ограничение игрока границами
+      player.x = Math.min(Math.max(player.x, player.radius), W - player.radius);
+      player.y = Math.min(Math.max(player.y, player.radius), H - player.radius);
+    }
+
+    // Основной цикл обновления
+    function update() {
+      if (!gameActive || gameCompleted) return;
+
+      movePlayer();
+      moveEnemies();
+
+      // Проверка столкновений с врагами
+      if (checkPlayerEnemyCollision()) {
+        handleGameOver();
+        return; // Прерываем, чтобы не собирать цели в этом кадре после поражения
+      }
+
+      // Сбор целей
+      collectTargets();
+    }
+
+    // Отрисовка
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Сетка / фон
+      ctx.strokeStyle = '#2d3548';
+      ctx.lineWidth = 0.6;
+      for (let i = 0; i < W; i += 50) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, H);
+        ctx.strokeStyle = '#2a3345';
+        ctx.stroke();
+      }
+      for (let j = 0; j < H; j += 50) {
+        ctx.beginPath();
+        ctx.moveTo(0, j);
+        ctx.lineTo(W, j);
+        ctx.stroke();
+      }
+
+      // Рисуем цели (зелёные)
+      for (let target of targets) {
+        ctx.beginPath();
+        ctx.arc(target.x, target.y, target.radius, 0, Math.PI * 2);
+        ctx.fillStyle = '#4ade80';
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = 15;
+        ctx.fill();
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = '#bbf7d0';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        // Блик
+        ctx.beginPath();
+        ctx.arc(target.x - 3, target.y - 3, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#f0fdf4';
+        ctx.shadowBlur = 8;
+        ctx.fill();
+      }
+
+      // Рисуем врагов (красные)
+      for (let enemy of enemies) {
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = '#ef4444';
+        ctx.shadowColor = '#dc2626';
+        ctx.shadowBlur = 18;
+        ctx.fill();
+        ctx.strokeStyle = '#fecaca';
+        ctx.lineWidth = 2.2;
+        ctx.stroke();
+        // Внутренний узор
+        ctx.beginPath();
+        ctx.arc(enemy.x - 2, enemy.y - 2, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#f87171';
+        ctx.shadowBlur = 6;
+        ctx.fill();
+      }
+
+      // Рисуем игрока (синий)
+      ctx.beginPath();
+      ctx.arc(player.x, player.y, player.radius, 0, 2 * Math.PI);
+      ctx.fillStyle = '#3b82f6';
+      ctx.shadowColor = '#2563eb';
+      ctx.shadowBlur = 20;
+      ctx.fill();
+      ctx.strokeStyle = '#bfdbfe';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      // Глаз игрока
+      ctx.beginPath();
+      ctx.arc(player.x - 5, player.y - 5, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(player.x - 7, player.y - 7, 2.2, 0, Math.PI * 2);
+      ctx.fillStyle = '#0f172a';
+      ctx.shadowBlur = 0;
+      ctx.fill();
+
+      // Сброс теней
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+
+      // Если игра не активна (но не завершена победой) показываем полупрозрачный текст
+      if (!gameActive && !gameCompleted) {
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#0f0f1a';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#facc15';
+        ctx.font = 'bold 24px "Segoe UI"';
+        ctx.textAlign = 'center';
+        ctx.fillText('ПАУЗА', W/2, H/2);
+      } else if (gameCompleted) {
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#0f1a0f';
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#4ade80';
+        ctx.font = 'bold 26px "Segoe UI"';
+        ctx.fillText('ПОБЕДА!', W/2, H/2);
+      }
+    }
+
+    // Игровой цикл
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // ---------- Обработчики событий клавиатуры ----------
+    function handleKeyDown(e) {
+      const code = e.code;
+      if (code in keys) {
+        e.preventDefault();
+        keys[code] = true;
+      }
+      // Предотвращаем стандартное поведение стрелок
+      if (code.startsWith('Arrow') || code === 'KeyW' || code === 'KeyA' || code === 'KeyS' || code === 'KeyD') {
+        e.preventDefault();
+      }
+    }
+
+    function handleKeyUp(e) {
+      const code = e.code;
+      if (code in keys) {
+        e.preventDefault();
+        keys[code] = false;
+      }
+      if (code.startsWith('Arrow') || code === 'KeyW' || code === 'KeyA' || code === 'KeyS' || code === 'KeyD') {
+        e.preventDefault();
+      }
+    }
+
+    // Кнопка сброса
+    document.getElementById('resetButton').addEventListener('click', () => {
+      // Удаляем возможное модальное окно
+      const modal = document.getElementById('customModal');
+      if (modal) modal.remove();
+      // Сбрасываем полностью до уровня 1
+      currentLevel = 1;
+      gameCompleted = false;
+      gameActive = true;
+      resetLevel(1);
+      updateUI();
+    });
+
+    // Глобальные слушатели клавиатуры
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+
+    // Предотвращаем прокрутку страницы при использовании стрелок (дополнительно)
+    window.addEventListener('keydown', function(e) {
+      if (e.code.startsWith('Arrow') || e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD') {
+        e.preventDefault();
+      }
+    }, {passive: false});
+
+    // Старт игры
+    resetLevel(1);
+    gameActive = true;
+    gameCompleted = false;
+    updateUI();
+    gameLoop();
+
+    // Дополнительно: очистка модальных окон при перезапуске через кнопку (уже учтено)
+  })();
+</script>
+</body>
+</html>
